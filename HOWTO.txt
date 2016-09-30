@@ -1,0 +1,355 @@
++-----------------------------------------------------+
+|           DECOMAP Version 0.2.0.0            |
++-----------------------------------------------------+
+
+Content:
+========
+1) Credits
+
+2) License
+
+3) Usage
+
+4) Data collecting Server configuration informations
+
+   a) LDAP
+   
+   b) RADIUS
+   
+   c) IPTables
+   
+   d) Snort
+   
+   e) Nagios
+   
+   f) Icinga
+   
+5) getting started with DECOMAP-Client
+	
+   a)Requirements for start
+   
+   b) Build Application
+   
+   c) how to: configuration
+   
+   d) certificate-based authentication
+   
+   e) run the application
+
+
+1) Credits:
+===========
+Developed within the SIMU-Project by Decoit GmbH (http://www.decoit.de/)
+Uses the ifmapj-library developed by Trust, FH Hannover (http://trust.inform.fh-hannover.de/) 
+Based on the irondhcp-0.1.0 developed by Trust, FH Hannover (http://trust.inform.fh-hannover.de/)
+
+Additional libraries used in current version: 
+See pom.xml
+
+more Information can be found on the SIMU-Project Homepage (http://simu-project.de)
+
+
+
+2) License:
+===========
+Licensed to the Apache Software Foundation (ASF) under one   
+or more contributor license agreements.  See the NOTICE file  
+distributed with this work for additional information         
+regarding copyright ownership.  The ASF licenses this file    
+to you under the Apache License, Version 2.0 (the            
+"License"); you may not use this file except in compliance    
+with the License.  You may obtain a copy of the License at    
+                                                               
+http://www.apache.org/licenses/LICENSE-2.0                   
+                                                               
+Unless required by applicable law or agreed to in writing,    
+software distributed under the License is distributed on an  
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY        
+KIND, either express or implied.  See the License for the     
+specific language governing permissions and limitations       
+under the License.           
+
+
+
+3) Usage:
+=========
+The DECOMAP-client in general can be used to collect data from different applications (snort/nagios/icinga/iptables/radius/ldap/openvpn), 
+process these entries, map them to IFMapEvents and send them to a Map-Server. Furthermore, it can subscribe to
+some Client-Identifiers and poll for new results (currently only used inside the ip-tables-component).
+
+Currently, the DECOMAP-client holds different components which working with different applications and with different data collecting methods. 
+In the current release, only one of the components can be active at a time, so you effectively need one instance of the IfMapClient
+for every component you want to observe (this may change in future releases). At current State, the different components 
+performs the following tasks:
+
+
+SNORT_ASCIILOG:	
+	Using a Snort and reading out the alert log of snort to build IFMAP-Events and send them to the MAP-Server.
+	
+SNORT_AD_FILE:
+	Using a Snort and its alert log to detect CVE attacks. The DECOMAP-client sending a structure to the MAP-Server
+	which represent the CVE attack.
+	
+NAGIOS_SOCKET:
+	Using a socket communication to receive and map host and service status informations from a Nagios-server.
+	It is also possible to use a Icinga-server.
+	
+ICINGA_REST:
+	Using the REST interface of a Icinga-server to receive and map Icinga-events.
+
+OPENVPN_FILE:
+	Reading out the connection data from OpenVPN over a logfile, map them and sending them to the map-server.
+	
+RADIUS_FILE
+	Reading out the connection events from RADIUS over a logfile, map them and sending them to the map-server.
+
+LDAP_FILE
+	Reading out the connection events from LDAP over a logfile, map them and sending them to the map-server.
+	
+IPTABLES_FILE
+	Reading out the iptables events from a logfile, map them and send them to the map-server. Furthermore its possible
+	to execute iptables actions based on data from the MAP-server, which came from a subscription.                                                     
+
+4) Data collecting Server configuration informations
+======================
+
+a) LDAP
+-------
+
+	Set up a valid OpenLDAP instance and configure it as you wish.
+	But make sure the loglevel including 256 to provide the right data.
+	Note that your users can have a role! This role can be any attribute you wish, you only need to note that attribute
+	inside of the DECOMAP configuration for LDAP. (It is the attribute application.ldap.attribute)
+
+b) RADIUS
+---------
+
+	Set up a valid FreeRADIUS instance and configure it as you wish!
+	Now you need to make sure the following configuration is present.
+	
+	Inside the radiusd.conf set the following attributes as shown:
+	
+		auth = yes
+		msg_goodpass = "client ip: %{NAS-IP-Address}"
+		msg_badpass = "client ip: %{NAS-IP-Address}"
+	
+	Inside the dictonary file make sure to add the following line:
+	
+		ATTRIBUTE    Role         1       string  Juniper
+
+	Now you need to give every user a role, or else he won't be send to the map-server.
+	You can do that by adding the line:
+	
+		Role := "role@username"
+		
+	into the user configuration. replace role with the role of the user and replace username with the name of the user
+
+c) IPTables
+-----------
+	
+	Set up a valid IPTables instance, if not already present.
+	Now you should already be able to use a valid configured DECOMAP-client.
+	The logfile is normally the syslog!
+	
+	Note that you can configure a starting script depending on your IPTables policy!
+
+d) Snort
+--------
+
+	Set up a valid Snort instance and configure it as you wish!
+	Note that the snort-rules are important for the logging! Configure them as you wish!
+	If the DECOMAP-client configuration is valid you should be able to get started!
+
+e) Nagios
+---------
+
+	After setting up a Nagios instance you need add some commands!
+	Inside the commands.cnf you need to add :
+	
+		define command{
+			command_name	show-service
+			command_line	[PATH]/helloservice.sh  $SERVICESTATE$ $SERVICESTATETYPE$ $SERVICEATTEMPT$ $SERVICEDESC$ $SERVICELATENCY$ $SERVICEEXECUTIONTIME$ $SERVICEDURATION$ $SERVICEDOWNTIME$ $HOSTADDRESS$ 
+			#$SERVICEOUTPUT$
+		}
+
+		define command{
+       		command_name    show-host
+        	command_line   [PATH]/hellohost.sh $HOSTNAME$ $HOSTADDRESS$ $HOSTSTATE$ $HOSTSTATETYPE$ 
+			# $HOSTALIAS$ $HOSTOUTPUT$ $HOSTPERFDATA$
+		}
+		
+	[PATH] should be the path to the given script! The scripts can be found inside the configuration directory of Nagios from DECOMAP!
+	Make sure the scripts can be executed! Furthermore you need to change TARGETADDRESS inside of the scripts to the IP-Address of the Nagios-server!
+	Now you only need to add to every host and every service the attribute event_handler with the value show-host or show-service, depending on if its a service or a host!
+	
+
+f) Icinga
+----------
+
+	Set up a valid Icinga instance and configure it as you wish!
+	You can use the Icinga as Nagios, which is a bit different to configure.
+	For the REST communication you only should make sure where the cgi files are!
+	After setting up the Icinga you should already be able to get started with a valid configured DECOMAP-client!
+
+5) getting started with DECOMAP-Client:
+=================================
+
+a) Requirements for start
+--------------------------
+
+	- Maven
+	- SimuMetaDataFactory
+	- Java 7+
+	- Valid configuration
+	- Supported server which is running with a valid configuration
+	- A running IfmapJ Server, like irond (https://github.com/trustathsh/irond)
+	
+b) Build Application
+--------------------
+
+	Go into the SimuMetaDataFactory directory and call: 
+	
+	$ mvn install
+	
+	Now you can build the DECOMAP-Application by calling:
+	
+	$ mvn package
+	
+	inside of the DECOMAP directory.
+	
+	Now you have the decomap-0.2.0.0.jar and you can move it to a preferred directory.
+	Also you have some example keystore file inside the keystore directory and some example configurations files
+	inside of the config directory.
+	
+	
+	
+c) how to: configuration
+------------------------
+
+	Inside of the config folder you should find some example properties files.
+	You need do some specific configurations!
+
+	Note: [*] is a filler for values you need to set depending on your situation
+
+	- config.properties -
+		This file contains the main configuration for the DECOMAP-client and the Map-Server connection!
+		To get started you need at least change the following:
+
+			Always needed:
+				application.component=[Select a valid running mode for your server]
+				application.ipaddress=[IP of host on which the client is running]
+				
+				This paths should refer to a valid configuration file for the selected running mode
+				Note that normally you only need to change the second directory, from the application jar, to the server name.
+				All files are already created, so you should look into the config directory to find a standard path
+				application.pollingconfig.path=[path to file]rest_polling.properties
+				application.mappingconfig.path=[path to file]mapping.properties
+				application.regexconfig.path=[path to file]regex.properties
+
+				this entry is atm only needed for iptables. In general this entry should be ok:
+				application.pollresultfilterconfig.path=config/iptables/enforcement.properties			
+				
+				Map-server URL should be a in http(s) format. (Example: https://10.10.100.11:8443/)
+				mapserver.url=[URL of the MAP-Server]
+				
+		If the MAP-server is using a basic authentication (else basicauth.enabled should be false):
+				mapserver.basicauth.enabled=true
+				mapserver.basicauth.user=[username for MAP-server]
+				mapserver.basicauth.password=[password for MAP-server]
+									
+		If the DECOMAP-client is running on a service server (else isservice should be false):						
+				application.isservice=true
+				application.serviceport=[service port]
+				application.servicetype=[service type]
+				application.servicename=[service name]
+				application.administrativdomain=[administrative domain of the service]
+			
+		You can do more changes in the configuration to customize the client!
+				
+		
+	Note that the next files are the files you set in the application path.
+	
+	- mapping.properties -
+		This file contains informations for mapping the received data from the server on which the client is running.
+		The standard configuration should do it, but you can specify the configuration!
+		Exception:
+			LDAP. LDAP having important entries you need to customize! For more information look into the file commentary! 
+
+	-polling.properties-
+		this file contains information for receiving informations from the data collecting server!
+		
+		the file configuration is depending on the collection way of the mode
+		
+		over rest:
+			you should change all entries to your settings!
+			Look into the files for more details!
+		
+		over files:
+			filepath=[path to file to monitor. Depending on server]
+			
+			this one entry should do it in the most cases.
+			Radius also need:
+			radacctDir=[path to radacct directory]
+			
+		over socket:
+			the port entry should math the port of the socket. For nagios the port is set inside of the hello scripts!
+			
+
+	- regex.properties -
+		This file provides some regex pattern
+		In the normal case you should not touch this!
+
+
+	- enforcement.properties - 
+		This file contains information for reaction mode of the DECOMAP-client. The client can react to 
+		data received over a subscription with server specific actions!
+		
+		You should customize all entry for your personal use! But it should not be necessary if you don't want to use it!
+	
+	for examples and more informations look into the example files!
+
+	another way to configure the client is by using the decomap-config-gui!
+
+d) certificate-based authentication
+------------------------------------
+
+   the self signed certificate for this map-client (both in .pem and .der format) as well as the map-client's
+   keystore are located in the "/keystore" folder. For certificate-based authentication both the map-client and
+   the map-server have to contain the relating certificate inside their keystore. The following commands may
+   be helpful when dealing with certificates. Both the Java-Keytool and openssl have to be installed on your system
+   in order to execute these commands:
+   
+   - create new keystore: 
+     keytool -keystore foo.jks -genkeypair -alias foo
+   
+   - convert existing keystore to pkcs12 format:
+     keytool -importkeystore -srckeystore foo.jks -destkeystore foo.p12 -srcstoretype jks -deststoretype pkcs12
+   
+   - export certificate from keystore in .pem format using openssl: 
+     openssl pkcs12 -in foo.p12 -out foo.pem
+   
+   - convert certificate to .der format using openssl:
+     openssl x509 -outform der -in foo.pem -out foo.der
+   
+   - import .der-certificate into target keystore:
+     keytool -import -alias foo -keystore foo.jks -storepass targetstorepass -file ".der file to import"
+     
+   - show all certificates in targer keystore:
+     keytool -list -keystore foo.jks
+
+
+e) run the application
+----------------------
+
+	Make sure a valid ifmap Server is running and is reachable by the DECOMAP-client.
+
+	After a successful configuration you can run the Applikation by calling:
+	
+	$ java -jar decomap-0.2.0.0.jar 
+	
+	For a visualisation of the metadata irongGUI (https://github.com/trustathsh/irongui)
+	or VisitMeta (http://trust.f4.hs-hannover.de/projects/visitmeta.html) is helpfull!
+ 
+
+   
+(c) 2015 SIMU-Project (http://simu-project.de)
